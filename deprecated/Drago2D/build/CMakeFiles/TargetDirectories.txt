@@ -1,0 +1,3 @@
+/home/dragomir/dev/Drago2D/Drago2D/build/CMakeFiles/rebuild_cache.dir
+/home/dragomir/dev/Drago2D/Drago2D/build/CMakeFiles/drago2d.dir
+/home/dragomir/dev/Drago2D/Drago2D/build/CMakeFiles/edit_cache.dir

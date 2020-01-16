@@ -1,0 +1,1 @@
+/usr/bin/c++    -rdynamic CMakeFiles/sandbox.dir/main.cpp.o  -o sandbox -Wl,-rpath,/home/dragomir/dev/Drago2D/Drago2D/build:/home/dragomir/dev/Drago2D/Drago2D/vendor/lib/linux /home/dragomir/dev/Drago2D/Drago2D/build/libdrago2d.so -lGL /home/dragomir/dev/Drago2D/Drago2D/vendor/lib/linux/libglfw.so /home/dragomir/dev/Drago2D/Drago2D/vendor/lib/linux/libGLEW.so 
