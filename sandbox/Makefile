@@ -1,8 +1,13 @@
 cxx=c++
 
-cflags=-std=c++17 -Wall -I ./.. -L../bin/debug -ldrago2d
+cflags=-std=c++17 -Wall -Wextra -Wno-unknown-pragmas
 
-obj:=main.o
+# Run "pkg-config --static --libs glfw3" to see what libraries are needed for your system
+# -lGL is for linux systems specifically
+lib:=-L/usr/local/lib -lglfw3 -lrt -lm -ldl -lX11 -lpthread -lxcb -lXau -lXdmcp -lGL
+includes:=-I/home/dragomir/dev/Drago2D/include/
+
+obj:=main.o d2d.o
 
 exe=./main
 
@@ -11,10 +16,10 @@ all: $(exe)
 	@$(exe)
 
 $(exe): $(obj)
-	$(cxx) $(cflags) $^ -o $@
+	$(cxx) $(cflags) $^ -o $@ $(lib)
 
-$.o: %.cpp
-	$(cxx) -c $(cflags) $^ -o $@
+%.o: %.cpp
+	$(cxx) $(includes) -c $(cflags) $^ -o $@
 
 clean:
 	rm $(exe) $(obj)
