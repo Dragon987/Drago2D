@@ -113,8 +113,21 @@ namespace window {
 }
 
 namespace draw {
+    // Translates to coordinates x, y
+    void translate(float x, float y) noexcept;
+
+    void line(float x1, float y1, float x2, float y2, const color_t& c);
+
+    // Draw filled rect at center coordinates x, y
     void fill_rect(float x, float y,
-        float width, float height, const color_t& c, float rotation);
+        float width, float height, const color_t& c, float rotation) noexcept;
+    
+    void draw_rect(float x, float y,
+        float width, float height, const color_t& c, float rotation) noexcept;
+    
+    void draw_circle(float x, float y, float r, const color_t& c) noexcept;
+    
+    void fill_circle(float x, float y, float r, const color_t& c) noexcept;
 }
 
 }
@@ -183,6 +196,7 @@ static unsigned int d2d_draw_shader_program;
 // Matrices
 
 static glm::mat4* d2d_draw_projection;
+static glm::mat4 d2d_draw_translation;
 
 /*************************************************/
 // Functions to initialize shader programs
@@ -255,12 +269,20 @@ static uint d2d_draw_vao, d2d_draw_vbo;
 /*************************************************/
 // Initialization system
 
+#include <signal.h>
 #include "glfw/glfw3.h"
 
 static bool d2d_initialized_glad = false;
 
 namespace d2d
 {
+
+void terminate() noexcept
+{
+    D2D_LOG_CORE_INFO("Terminating Drago2D");
+    glfwTerminate();
+    D2D_LOG_CORE_INFO("Terminated Drago2D");
+}
 
 int init() noexcept
 {
@@ -275,15 +297,12 @@ int init() noexcept
         return D2D_EXIT_CODE_GLFW_INIT_FAILED;
     }
 
+    D2D_LOG_CORE_INFO("Adding signals");
+    signal(SIGINT, [](int){ terminate(); });
+    D2D_LOG_CORE_INFO("Added signals");
+
     D2D_LOG_CORE_INFO("Initialized Drago2D");
     return 0;
-}
-
-void terminate() noexcept
-{
-    D2D_LOG_CORE_INFO("Terminating Drago2D");
-    glfwTerminate();
-    D2D_LOG_CORE_INFO("Terminated Drago2D");
 }
 
 } // namespace d2d
@@ -301,9 +320,9 @@ namespace d2d
 {
 
 window_t::window_t(uint32_t width, uint32_t height, const char *title) noexcept
-    : m_window(glfwCreateWindow(width, height, title, nullptr, nullptr)), m_width(width), 
+    : m_window(glfwCreateWindow(width, height, title, nullptr, nullptr)),
 	m_projection(glm::ortho(0.0f, (float)width, (float)height, 0.0f, -1.0f, 10.0f)),
-	m_height(height), m_title(title)
+	m_width(width), m_height(height), m_title(title)
 	  
 {
     D2D_LOG_CORE_INFO("Creating window {}", m_title);
@@ -434,14 +453,47 @@ static void d2d_draw_set_projection(glm::mat4** proj)
 	*proj = static_cast<glm::mat4*>(glfwGetWindowUserPointer(glfwGetCurrentContext()));
 }
 
+static void d2d_draw_setup_draw(float* verts, size_t verts_size, size_t vert_count, 
+    float rotation, GLenum draw_type, const d2d::color_t& c)
+{
+    d2d_draw_bind_vao();
+    d2d_draw_bind_vbo();
+
+    d2d_draw_upload_data_to_vbo(verts, verts_size);
+
+    d2d_draw_vertex_attrib_array(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof (float), nullptr);
+
+    glUseProgram(d2d_draw_shader_program);
+    auto color_loc = glGetUniformLocation(d2d_draw_shader_program, "u_color");
+    glUniform4f(color_loc, c.r, c.g, c.b, c.a);
+
+	d2d_draw_set_projection(&d2d_draw_projection);
+	
+	glm::mat4 model = glm::rotate(d2d_draw_translation, rotation, glm::vec3(0.0f, 0.0f, 1.0f));
+
+	auto mp = *d2d_draw_projection * model;
+
+	auto mp_loc = glGetUniformLocation(d2d_draw_shader_program, "u_mp");
+	glUniformMatrix4fv(mp_loc, 1, GL_FALSE, &mp[0][0]);
+
+    d2d_draw_bind_vao();
+    glDrawArrays(draw_type, 0, vert_count);
+}
+
 namespace d2d::draw
 {
 
-void fill_rect(float x, float y,
-          float width, float height, const color_t& c, float rotation)
+// Translates to coordinates x, y
+void translate(float x, float y) noexcept
 {
-	glm::mat4 model(1.0f);
-	model = glm::translate(model, glm::vec3(x + width / 2.0f, y + width / 2.0f, 0.0f));
+    d2d_draw_translation = glm::translate(glm::mat4(1.0f), glm::vec3(x, y, 0.0f));
+}
+
+// Draws filled rectangle from center
+void fill_rect(float x, float y,
+    float width, float height, const color_t& c, float rotation) noexcept
+{
+	translate(x, y);
 
     float vertices[] = {
         -width / 2.0f, -height / 2.0f, 0.0f,
@@ -452,28 +504,36 @@ void fill_rect(float x, float y,
 		-width / 2.0f,  height / 2.0f, 0.0f
     };
 
-    d2d_draw_bind_vao();
-    d2d_draw_bind_vbo();
+    d2d_draw_setup_draw(vertices, sizeof vertices, 6, rotation, GL_TRIANGLES, c);
+}
 
-    d2d_draw_upload_data_to_vbo(vertices, sizeof vertices);
+void line(float x1, float y1, float x2, float y2, const color_t& c)
+{
+    translate(0, 0);
+    float vertices[] = {
+        x1, y1, 0,
+        x2, y2, 0,
+    };
+    d2d_draw_setup_draw(vertices, sizeof vertices, 2, 0, GL_LINES, c);
+}
 
-    d2d_draw_vertex_attrib_array(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof (float), nullptr);
+void draw_rect(float x, float y,
+    float width, float height, const color_t& c, float rotation) noexcept
+{
+    translate(x, y);
 
-    glUseProgram(d2d_draw_shader_program);
-    auto color_loc = glGetUniformLocation(d2d_draw_shader_program, "u_color");
-    glUniform4f(color_loc, c.r, c.g, c.b, c.a);
+    float vertices[] = {
+        -width / 2.0f, -height / 2.0f, 0.0f, 
+         width / 2.0f, -height / 2.0f, 0.0f,
+         width / 2.0f, -height / 2.0f, 0.0f,
+         width / 2.0f,  height / 2.0f, 0.0f,
+         width / 2.0f,  height / 2.0f, 0.0f,
+        -width / 2.0f,  height / 2.0f, 0.0f,
+        -width / 2.0f,  height / 2.0f, 0.0f,
+        -width / 2.0f, -height / 2.0f, 0.0f, 
+    };
 
-	d2d_draw_set_projection(&d2d_draw_projection);
-	
-	model = glm::rotate(model, rotation, glm::vec3(0.0f, 0.0f, 1.0f));
-
-	auto mp = *d2d_draw_projection * model;
-
-	auto mp_loc = glGetUniformLocation(d2d_draw_shader_program, "u_mp");
-	glUniformMatrix4fv(mp_loc, 1, GL_FALSE, &mp[0][0]);
-
-    d2d_draw_bind_vao();
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    d2d_draw_setup_draw(vertices, sizeof vertices, 8, rotation, GL_LINES, c);
 }
 
 } // namespace d2d::draw
