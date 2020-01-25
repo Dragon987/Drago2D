@@ -1,6 +1,12 @@
 cxx=c++
 
-cflags=-std=c++17 -Wall -Wextra -Wno-unknown-pragmas
+cflags:=-std=c++17 -Wall -Wextra -Wno-unknown-pragmas
+
+ifeq ($(config), debug)
+	cflags:=$(cflags) -g
+else
+	cflags:=$(cflags) -O3
+endif
 
 # Run "pkg-config --static --libs glfw3" to see what libraries are needed for your system
 # -lGL is for linux systems specifically

@@ -27,6 +27,9 @@ int main()
         d2d::draw::draw_rect(300, 300, 100, 20, { 0, 0, 1, 1 }, 0);
         d2d::draw::line(0, 0, 640, 480, { 0, 1, 0, 1});
 
+        d2d::draw::fill_circle(100, 400, 50, { 1, 0, 1, 1 });
+        d2d::draw::draw_circle(400, 100, 50, { 0, 1, 1, 1 });
+
         a += 0.01;
         d2d::window::poll_events(window);
     }

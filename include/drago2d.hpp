@@ -264,7 +264,7 @@ static std::optional<unsigned int> d2d_draw_create_shader_program(const char *vs
 
 typedef uint uint32_t;
 
-static uint d2d_draw_vao, d2d_draw_vbo;
+static uint d2d_draw_vao, d2d_draw_vbo, d2d_draw_ebo;
 
 /*************************************************/
 // Initialization system
@@ -353,6 +353,7 @@ window_t::window_t(uint32_t width, uint32_t height, const char *title) noexcept
 
         glGenVertexArrays(1, &d2d_draw_vao);
         glGenBuffers(1, &d2d_draw_vbo);
+        glGenBuffers(1, &d2d_draw_ebo);
     }
 }
 
@@ -426,6 +427,8 @@ void get_cursor_pos(const window_t &window, double &x, double &y) noexcept
 /*************************************************/
 // Drawing system
 
+#include <cmath>
+
 static void d2d_draw_bind_vao()
 {
     glBindVertexArray(d2d_draw_vao);
@@ -436,9 +439,19 @@ static void d2d_draw_bind_vbo()
     glBindBuffer(GL_ARRAY_BUFFER, d2d_draw_vbo);
 }
 
+static void d2d_draw_bind_ebo()
+{
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, d2d_draw_ebo);
+}
+
 static void d2d_draw_upload_data_to_vbo(void *data, size_t data_size)
 {
     glBufferData(GL_ARRAY_BUFFER, data_size, data, GL_STREAM_DRAW);
+}
+
+static void d2d_draw_upload_data_to_ebo(void *data, size_t data_size)
+{
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, data_size, data, GL_STREAM_DRAW);
 }
 
 static void d2d_draw_vertex_attrib_array(uint position, uint size,
@@ -480,6 +493,35 @@ static void d2d_draw_setup_draw(float* verts, size_t verts_size, size_t vert_cou
     glDrawArrays(draw_type, 0, vert_count);
 }
 
+static void d2d_draw_setup_draw(float* verts, size_t verts_size, uint* inds,
+    size_t inds_size, size_t vert_count, float rotation, GLenum draw_type, const d2d::color_t& c)
+{
+    d2d_draw_bind_vao();
+    d2d_draw_bind_vbo();
+    d2d_draw_bind_ebo();
+
+    d2d_draw_upload_data_to_vbo(verts, verts_size);
+    d2d_draw_upload_data_to_ebo(inds, inds_size);
+
+    d2d_draw_vertex_attrib_array(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof (float), nullptr);
+
+    glUseProgram(d2d_draw_shader_program);
+
+    auto color_loc = glGetUniformLocation(d2d_draw_shader_program, "u_color");
+    glUniform4f(color_loc, c.r, c.g, c.b, c.a);
+
+	d2d_draw_set_projection(&d2d_draw_projection);
+	glm::mat4 model = glm::rotate(d2d_draw_translation, rotation, glm::vec3(0.0f, 0.0f, 1.0f));
+	auto mp = *d2d_draw_projection * model;
+
+	auto mp_loc = glGetUniformLocation(d2d_draw_shader_program, "u_mp");
+	glUniformMatrix4fv(mp_loc, 1, GL_FALSE, &mp[0][0]);
+
+    d2d_draw_bind_vao();
+    d2d_draw_bind_ebo();
+    glDrawElements(draw_type, vert_count, GL_UNSIGNED_INT, nullptr);
+}
+
 namespace d2d::draw
 {
 
@@ -498,13 +540,16 @@ void fill_rect(float x, float y,
     float vertices[] = {
         -width / 2.0f, -height / 2.0f, 0.0f,
          width / 2.0f, -height / 2.0f, 0.0f,
-		 width / 2.0f,  height / 2.0f, 0.0f,
-		-width / 2.0f, -height / 2.0f, 0.0f,
-		 width / 2.0f,  height / 2.0f, 0.0f,
-		-width / 2.0f,  height / 2.0f, 0.0f
+         width / 2.0f,  height / 2.0f, 0.0f,
+        -width / 2.0f,  height / 2.0f, 0.0f
     };
 
-    d2d_draw_setup_draw(vertices, sizeof vertices, 6, rotation, GL_TRIANGLES, c);
+    uint inds[] = {
+        0, 1, 2,
+        0, 3, 2
+    };
+
+    d2d_draw_setup_draw(vertices, sizeof vertices, inds, sizeof inds, 6, rotation, GL_TRIANGLES, c);
 }
 
 void line(float x1, float y1, float x2, float y2, const color_t& c)
@@ -534,6 +579,57 @@ void draw_rect(float x, float y,
     };
 
     d2d_draw_setup_draw(vertices, sizeof vertices, 8, rotation, GL_LINES, c);
+}
+
+void fill_circle(float x, float y, float r, const color_t& c) noexcept
+{
+    translate(x, y);
+    const uint no_sides = 1000;
+    const uint vert_count = no_sides + 2;
+
+    float two_pi = M_PI * 2.0f;
+
+    float verts[vert_count * 3];
+
+    verts[0] = 0;
+    verts[1] = 0;
+    verts[2] = 0;
+
+    for (uint i = 1; i < vert_count; ++i)
+    {
+        uint idx = 3 * i;
+        verts[idx] = r * std::cos((idx) * two_pi / no_sides);
+        verts[idx + 1] = r * std::sin((idx + 1) * two_pi / no_sides);
+        verts[idx + 2] = 0.0f;
+    }
+
+    d2d_draw_setup_draw(verts, sizeof verts, vert_count, 0, GL_TRIANGLE_FAN, c);
+
+}
+    
+void draw_circle(float x, float y, float r, const color_t& c) noexcept
+{
+    translate(x, y);
+    const uint no_sides = 1000;
+    const uint vert_count = no_sides + 2;
+
+    float two_pi = M_PI * 2.0f;
+
+    float verts[vert_count * 3];
+
+    verts[0] = 0;
+    verts[1] = 0;
+    verts[2] = 0;
+
+    for (uint i = 1; i < vert_count; ++i)
+    {
+        uint idx = 3 * i;
+        verts[idx] = r * std::cos((idx) * two_pi / no_sides);
+        verts[idx + 1] = r * std::sin((idx + 1) * two_pi / no_sides);
+        verts[idx + 2] = 0.0f;
+    }
+
+    d2d_draw_setup_draw(verts + 3, (sizeof verts) - 3 * sizeof (float), vert_count - 1, 0, GL_LINE_LOOP, c);
 }
 
 } // namespace d2d::draw
