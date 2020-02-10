@@ -21,7 +21,7 @@ int main()
     {
         d2d::window::set_background({ a / 2, a / 4, a / 8, a / 16 });
 
-        d2d::set_fps(1);
+        d2d::set_fps(75);
         
         d2d::window::get_cursor_pos(window, x, y);
         d2d::draw::fill_rect(x, y, 50, 50, { 1, 0, 0, 1 }, a);
