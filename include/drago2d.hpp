@@ -8,7 +8,6 @@
  * 
  * 
  * 
-
 **************************************************/
 
 #ifdef DRAGO2D_ENGINE_IMPLEMENTATION
@@ -34,6 +33,10 @@
     #endif // __APPLE__
 #endif // _WIN32
 
+#ifdef D2D_WINDOWS
+#include <windows.h>
+#endif
+
 #define D2D_EXIT_CODE_GLFW_INIT_FAILED 1
 #define D2D_EXIT_CODE_GLAD_INIT_FAILED 2
 #define D2D_EXIT_CODE_SHADER_CONSTRUCTION_FAILED 3
@@ -48,6 +51,7 @@ namespace d2d {
 
 int init() noexcept;
 void terminate() noexcept;
+void set_fps(uint32_t fps);
 struct window_t
 {
 private:
@@ -130,12 +134,33 @@ namespace draw {
     void fill_circle(float x, float y, float r, const color_t& c) noexcept;
 }
 
+namespace log {
+    template <typename ...Param>
+    inline void info(const char* format, Param ...args)
+    {
+        spdlog::info(format, args...);
+    }
+
+    template <typename ...Param>
+    inline void warn(const char* format, Param ...args)
+    {
+        spdlog::warn(format, args...);
+    }
+
+    template <typename ...Param>
+    inline void error(const char* format, Param ...args)
+    {
+        spdlog::error(format, args...);
+    }
+
+    template <typename ...Param>
+    inline void critical(const char* format, Param ...args)
+    {
+        spdlog::critical(format, args...);
+    }
 }
 
-#define D2D_LOG_INFO(...)      spdlog::info(__VA_ARGS__)
-#define D2D_LOG_WARN(...)      spdlog::warn(__VA_ARGS__)
-#define D2D_LOG_ERROR(...)     spdlog::error(__VA_ARGS__)
-#define D2D_LOG_CRITICAL(...)  spdlog::critical( __VA_ARGS__)
+}
 
 #endif // DRAGO2D_ENGINE_HPP
 
@@ -164,8 +189,9 @@ auto core_logger = spdlog::stdout_color_mt("d2d-core-logger");
 // further increasing self sustainability of library
 
 static const char *d2d_draw_vertex_shader_source = R"HERE(
-#version 330 core
-layout (location = 0) in vec3 i_pos;
+#version 130
+
+in vec3 i_pos;
 
 uniform mat4 u_mp;
 
@@ -176,9 +202,10 @@ void main()
 )HERE";
 
 static const char *d2d_draw_fragment_shader_source = R"HERE(
-#version 330 core
+#version 130
+
 out vec4 frag_color;
-  
+
 uniform vec4 u_color;
 
 void main()
@@ -238,6 +265,8 @@ static std::optional<unsigned int> d2d_draw_create_shader_program(const char *vs
         return {};
     auto shader_program = glCreateProgram();
 
+    glBindAttribLocation(shader_program, 0, "i_pos");
+
     glAttachShader(shader_program, *vertex_shader);
     glAttachShader(shader_program, *fragment_shader);
     glLinkProgram(shader_program);
@@ -270,10 +299,13 @@ static uint d2d_draw_vao, d2d_draw_vbo, d2d_draw_ebo;
 // Initialization system
 
 #include <signal.h>
+#include <chrono>
+#include <thread>
+
 #include "glfw/glfw3.h"
 
 static bool d2d_initialized_glad = false;
-
+static clock_t d2d_fps_last_time;
 namespace d2d
 {
 
@@ -301,8 +333,30 @@ int init() noexcept
     signal(SIGINT, [](int){ terminate(); });
     D2D_LOG_CORE_INFO("Added signals");
 
+    d2d_fps_last_time = clock();
+
     D2D_LOG_CORE_INFO("Initialized Drago2D");
     return 0;
+}
+
+void set_fps(uint32_t fps)
+{
+    auto curr_time = clock();
+
+    auto elapsed = curr_time - d2d_fps_last_time;
+
+    double sleep_for = (1.0 / static_cast<double>(fps)) - 
+        (static_cast<double>(elapsed) / static_cast<double>(CLOCKS_PER_SEC));
+    
+    sleep_for = sleep_for > 0 ? sleep_for : 0;
+
+#ifdef D2D_WINDOWS
+    Sleep(sleep_for);
+#elif defined(D2D_UNIX)
+    usleep(sleep_for * 1'000'000);
+#endif // D2D_WINDOWS
+
+    d2d_fps_last_time = clock();
 }
 
 } // namespace d2d
